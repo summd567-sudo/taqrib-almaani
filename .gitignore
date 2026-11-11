@@ -1,0 +1,3 @@
+*.pdf
+_test*
+__pycache__/

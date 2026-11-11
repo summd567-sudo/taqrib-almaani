@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>باحث تقريب المعاني — الشاطبية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>باحث تقريب المعاني</h1>
+    <p>متن الشاطبية مربوطًا بصفحات «تقريب المعاني في شرح حرز الأماني»</p>
+  </div>
+  <div class="searchbar">
+    <label for="q" class="sr">ابحث في المتن</label>
+    <input id="q" type="search" autocomplete="off" placeholder="كلمة، كلمة قرآنية، جزء من بيت، رقم بيت أو صفحة…">
+    <button id="clear" type="button" hidden aria-label="مسح البحث">✕</button>
+  </div>
+  <div class="tools">
+    <label for="sec" class="sr">انتقل إلى باب</label>
+    <select id="sec"></select>
+    <button id="pick" type="button" class="ghost">فتح ملف الكتاب</button>
+    <input id="file" type="file" accept="application/pdf" hidden>
+  </div>
+</header>
+
+<div class="layout" id="layout">
+  <main id="main">
+    <p id="status" class="status" role="status"></p>
+    <div id="list"></div>
+  </main>
+
+  <aside id="viewer" hidden aria-label="صفحة الكتاب">
+    <div class="vbar">
+      <button id="vnext" type="button" title="الصفحة التالية">التالية ‹</button>
+      <label>ص <input id="vpage" type="number" min="1" inputmode="numeric"></label>
+      <button id="vprev" type="button" title="الصفحة السابقة">› السابقة</button>
+      <span class="grow"></span>
+      <button id="vclose" type="button" aria-label="إغلاق عارض الكتاب">إغلاق ✕</button>
+    </div>
+    <div class="vbody" id="vbody"><canvas id="canvas"></canvas></div>
+  </aside>
+</div>
+
+<dialog id="dlg">
+  <h2>افتح نسختك من الكتاب</h2>
+  <p>لعرض الصفحة نفسها من «تقريب المعاني» اختر ملف الـPDF الموجود على جهازك (مرة واحدة فقط). الملف يبقى على جهازك ولا يُرفع إلى أي مكان.</p>
+  <p class="hint" id="dlgpage"></p>
+  <div class="row">
+    <button id="dlgpick" type="button" class="primary">اختيار ملف PDF</button>
+    <button id="dlgclose" type="button" class="ghost">ليس الآن</button>
+  </div>
+</dialog>
+
+<script src="data/data.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
