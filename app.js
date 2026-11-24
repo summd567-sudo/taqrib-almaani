@@ -4,6 +4,12 @@
   const $ = (id) => document.getElementById(id);
   const ar = (n) => Number(n).toLocaleString('ar-EG', { useGrouping: false });
   const MAX_RESULTS = 150;
+  // Commentaries linked to the matn: `id` is the page field on each verse.
+  const BOOKS = [
+    { id: 'p', name: 'تقريب المعاني', short: 'التقريب', store: 'pdf' },
+    { id: 'w', name: 'الوافي في شرح الشاطبية', short: 'الوافي', store: 'pdf-w' },
+  ].filter((b) => (window.SHATIBIYYAH || []).some((v) => v[b.id]));
+  const book = (id) => BOOKS.find((b) => b.id === id) || BOOKS[0];
 
   // ---------- normalisation ----------
   const DIAC = /[ؐ-ًؚ-ٰٟۖ-ۭـ]/g;
@@ -53,7 +59,8 @@
     <div class="v" id="b${v.n}">
       <span class="num" title="رقم البيت في المنظومة">${ar(v.n)}</span>
       <div class="txt"><span>${highlight(v.a, re)}</span><span>${highlight(v.b, re)}</span></div>
-      <button class="pg" type="button" data-p="${v.p}" title="افتح صفحة الشرح في تقريب المعاني">ص ${ar(v.p)}</button>
+      <div class="pgs">${BOOKS.filter((b) => v[b.id]).map((b) =>
+        `<button class="pg" type="button" data-b="${b.id}" data-p="${v[b.id]}" title="افتح صفحة الشرح في ${b.name}"><small>${b.short}</small> ص ${ar(v[b.id])}</button>`).join('')}</div>
       <div class="meta">${withContext
         ? `${esc(v.s)} · البيت ${ar(v.k)} · <a href="#b=${v.n}" data-go="${v.n}">موضعه في المتن</a>`
         : `البيت ${ar(v.k)} في الباب`}</div>
@@ -68,7 +75,7 @@
       }).join('');
     }
     list.innerHTML = fullHtml;
-    status.textContent = `${ar(V.length)} بيتًا · اضغط رقم الصفحة بجوار أي بيت لفتح شرحه`;
+    status.textContent = `${ar(V.length)} بيتًا · اضغط رقم الصفحة بجوار أي بيت لفتح شرحه في الكتاب`;
   };
 
   const search = (raw) => {
@@ -80,7 +87,7 @@
     for (const v of V) {
       let sc = 0;
       if (num !== null) {
-        if (v.n === num) sc = 100; else if (v.p === num) sc = 50; else if (v.k === num) sc = 5;
+        if (v.n === num) sc = 100; else if (BOOKS.some((b) => v[b.id] === num)) sc = 50; else if (v.k === num) sc = 5;
       } else if (toks.every((t) => v.h.includes(t))) {
         sc = 1;
         if (v.h.includes(nq)) sc += 10;
@@ -119,7 +126,7 @@
         return `<div class="v qp">
           <span class="num">﴿﴾</span>
           <div class="txt one"><span>${phs.map((ph) => highlight(ph, r.re)).join(' · ')}</span></div>
-          <button class="pg" type="button" data-p="${p}" title="افتح الصفحة في تقريب المعاني">ص ${ar(p)}</button>
+          <div class="pgs"><button class="pg" type="button" data-b="p" data-p="${p}" title="افتح الصفحة في تقريب المعاني"><small>التقريب</small> ص ${ar(p)}</button></div>
           <div class="meta">${v0 ? `${esc(v0.s)} · <a href="#b=${v0.n}" data-go="${v0.n}">أبيات هذا الموضع</a>` : ''}</div>
         </div>`;
       }).join('');
@@ -132,7 +139,7 @@
     list.innerHTML = html;
     status.textContent = r.res.length || r.pages.length
       ? (r.num !== null
-        ? `نتائج الرقم ${ar(r.num)}: رقم بيت، ثم أبيات الصفحة ${ar(r.num)}، ثم رقم البيت داخل الأبواب`
+        ? `نتائج الرقم ${ar(r.num)}: رقم بيت، ثم أبيات الصفحة ${ar(r.num)} في أي من الشروح، ثم رقم البيت داخل الأبواب`
         : `الأبيات المطابقة: ${ar(r.res.length)}` + (r.res.length > MAX_RESULTS ? ` (تُعرض أول ${ar(MAX_RESULTS)})` : '')
           + (r.pages.length ? ` · صفحات ذُكرت فيها الكلمة القرآنية: ${ar(r.pages.length)}` : ''))
       : '';
@@ -173,15 +180,16 @@
   list.addEventListener('click', (e) => {
     const t = e.target.closest('[data-p],[data-go],[data-sec],[data-clear]');
     if (!t) return;
-    if (t.dataset.p) openPage(Number(t.dataset.p), t.closest('.v'));
+    if (t.dataset.p) openPage(t.dataset.b, Number(t.dataset.p), t.closest('.v'));
     else if (t.dataset.go) { e.preventDefault(); goVerse(Number(t.dataset.go)); }
     else if (t.dataset.sec) goSection(Number(t.dataset.sec));
     else { q.value = ''; $('clear').hidden = true; renderAll(); }
   });
 
-  // ---------- PDF viewer (the user's own copy, kept on the device) ----------
+  // ---------- PDF viewer (the user's own copies, kept on the device) ----------
   const viewer = $('viewer'), layout = $('layout'), canvas = $('canvas'), dlg = $('dlg');
-  let pdf = null, cur = 1, pending = null, task = null;
+  const pdfs = {};              // book id -> loaded PDF document
+  let bk = BOOKS[0].id, cur = 1, pending = null, task = null, pickFor = null;
 
   const idb = (mode, fn) => new Promise((resolve, reject) => {
     const open = indexedDB.open('taqrib', 1);
@@ -194,17 +202,18 @@
     };
   });
 
-  const loadPdf = async (blob) => {
+  const loadPdf = async (id, blob) => {
     if (!window.pdfjsLib) throw new Error('تعذّر تحميل عارض PDF؛ تحقق من الاتصال بالإنترنت.');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
-    $('vpage').max = pdf.numPages;
-    $('pick').textContent = 'تغيير ملف الكتاب';
+    pdfs[id] = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
   };
 
   const render = async (p) => {
+    const pdf = pdfs[bk];
     cur = Math.min(Math.max(1, p), pdf.numPages);
+    $('vpage').max = pdf.numPages;
     $('vpage').value = cur;
+    $('vname').textContent = book(bk).short;
     const page = await pdf.getPage(cur);
     const width = Math.min($('vbody').clientWidth - 24, 900);
     const base = page.getViewport({ scale: 1 });
@@ -218,15 +227,27 @@
     $('vbody').scrollTop = 0;
   };
 
+  // The dialog lists every book with its state and a button to choose its file.
+  const showDialog = (want) => {
+    $('dlgpage').textContent = want ? `المطلوب: ${book(want.b).name} — الصفحة ${ar(want.p)}` : '';
+    $('dlgbooks').innerHTML = BOOKS.map((b) => `
+      <div class="bk">
+        <div><strong>${b.name}</strong><span>${pdfs[b.id] ? 'الملف محفوظ على هذا الجهاز ✓' : 'لم يُختر ملفه بعد'}</span></div>
+        <button type="button" class="${want && want.b === b.id && !pdfs[b.id] ? 'primary' : 'ghost'}" data-pick="${b.id}">${pdfs[b.id] ? 'تغيير الملف' : 'اختيار ملف PDF'}</button>
+      </div>`).join('');
+    if (!dlg.open) dlg.showModal();
+  };
+
   let anchor = null;
-  const openPage = async (p, rowEl) => {
+  const openPage = async (id, p, rowEl) => {
+    id = book(id).id;
     if (rowEl) anchor = rowEl;
-    if (!pdf) {
-      pending = p;
-      $('dlgpage').textContent = `الصفحة المطلوبة: ${ar(p)}`;
-      dlg.showModal();
+    if (!pdfs[id]) {
+      pending = { b: id, p };
+      showDialog(pending);
       return;
     }
+    bk = id;
     viewer.hidden = false;
     layout.classList.add('split');
     if (anchor && anchor.isConnected && window.matchMedia('(min-width: 901px)').matches) anchor.scrollIntoView({ block: 'center' });
@@ -234,20 +255,31 @@
     await render(p);
   };
 
-  const pickFile = () => $('file').click();
-  $('pick').addEventListener('click', pickFile);
-  $('dlgpick').addEventListener('click', pickFile);
+  $('pick').addEventListener('click', () => { pending = null; showDialog(null); });
+  $('dlgbooks').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-pick]');
+    if (!t) return;
+    pickFor = t.dataset.pick;
+    $('file').value = '';
+    $('file').click();
+  });
   $('dlgclose').addEventListener('click', () => dlg.close());
   $('file').addEventListener('change', async () => {
     const f = $('file').files[0];
-    if (!f) return;
+    if (!f || !pickFor) return;
+    const id = pickFor;
     try {
-      await loadPdf(f);
-      idb('readwrite', (s) => s.put(f, 'pdf')).catch(() => {});
-      if (dlg.open) dlg.close();
-      await openPage(pending || cur);
-      pending = null;
+      await loadPdf(id, f);
+      idb('readwrite', (st) => st.put(f, book(id).store)).catch(() => {});
+      if (pending && pending.b === id) {
+        const want = pending; pending = null;
+        if (dlg.open) dlg.close();
+        await openPage(want.b, want.p);
+      } else if (dlg.open) {
+        showDialog(pending);
+      }
     } catch (err) {
+      if (dlg.open) dlg.close();
       status.textContent = 'تعذّر فتح الملف: ' + err.message;
     }
   });
@@ -264,5 +296,5 @@
   renderAll();
   const m = location.hash.match(/^#b=(\d+)$/);
   if (m) goVerse(Number(m[1]));
-  idb('readonly', (s) => s.get('pdf')).then((blob) => blob && loadPdf(blob)).catch(() => {});
+  BOOKS.forEach((b) => idb('readonly', (st) => st.get(b.store)).then((blob) => blob && loadPdf(b.id, blob)).catch(() => {}));
 })();
