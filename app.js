@@ -21,6 +21,7 @@
     .replace(/[^ء-ي0-9 ]/g, ' ')
     .replace(/\s+/g, ' ').trim();
 
+  const loosen = (t) => t.replace(/ا/g, '').replace(/ص/g, 'س');
   const CLASS = { 'ا': '[اأإآٱ]', 'ي': '[يىئ]', 'ه': '[هة]', 'و': '[وؤ]' };
   const D = '[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u0640]*';
   const tokenRe = (tok) => [...tok].map((c) => (CLASS[c] || c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) + D).join('');
@@ -46,6 +47,7 @@
     v.sec = sections.length - 1;
     v.k = i - sections[sections.length - 1].start + 1;
     v.h = norm(v.a + ' ' + v.b);
+    v.h2 = loosen(v.h);   // spelling-tolerant form (alif dropped, sad = sin)
   });
   // Quranic phrases quoted in the commentary, per page: [page, phrase]
   const QW = window.QWORDS || [];
@@ -96,9 +98,19 @@
       }
       if (sc) res.push({ v, sc });
     }
+    // Nothing found: retry ignoring alif and sad/sin, so «يخادعون» finds «يخدعون», «الصراط» finds «السراط».
+    let loose = false;
+    if (!res.length && num === null) {
+      const t2 = toks.map(loosen).filter((t) => t.length >= 3);
+      if (t2.length === toks.length) {
+        for (const v of V) if (t2.every((t) => v.h2.includes(t))) res.push({ v, sc: 1 });
+        loose = res.length > 0;
+      }
+    }
     res.sort((x, y) => y.sc - x.sc || x.v.i - y.v.i);
     const secs = num === null ? sections.map((s, si) => ({ s, si })).filter(({ s }) => toks.every((t) => s.norm.includes(t))) : [];
-    const re = num === null ? new RegExp(toks.map(tokenRe).sort((a, b) => b.length - a.length).join('|'), 'g') : null;
+    const reSrc = (t) => (loose ? '[اأإآٱ]?' + tokenRe(loosen(t)).replace(/س/g, '[سص]').split(D).join(D + '[اأإآٱ]?' + D) : tokenRe(t));
+    const re = num === null ? new RegExp(toks.map(reSrc).sort((a, b) => b.length - a.length).join('|'), 'g') : null;
     const pages = new Map();
     if (num === null) {
       for (const [p, ph] of QW) {
@@ -107,7 +119,7 @@
         pages.get(p).push(ph);
       }
     }
-    return { res, secs, re, num, pages: [...pages].sort((x, y) => x[0] - y[0]) };
+    return { res, secs, re, num, loose, pages: [...pages].sort((x, y) => x[0] - y[0]) };
   };
 
   const renderSearch = (raw) => {
@@ -140,7 +152,7 @@
     status.textContent = r.res.length || r.pages.length
       ? (r.num !== null
         ? `نتائج الرقم ${ar(r.num)}: رقم بيت، ثم أبيات الصفحة ${ar(r.num)} في أي من الشروح، ثم رقم البيت داخل الأبواب`
-        : `الأبيات المطابقة: ${ar(r.res.length)}` + (r.res.length > MAX_RESULTS ? ` (تُعرض أول ${ar(MAX_RESULTS)})` : '')
+        : `${r.loose ? 'نتائج تقريبية (باختلاف الرسم)' : 'الأبيات المطابقة'}: ${ar(r.res.length)}` + (r.res.length > MAX_RESULTS ? ` (تُعرض أول ${ar(MAX_RESULTS)})` : '')
           + (r.pages.length ? ` · صفحات ذُكرت فيها الكلمة القرآنية: ${ar(r.pages.length)}` : ''))
       : '';
     window.scrollTo(0, 0);

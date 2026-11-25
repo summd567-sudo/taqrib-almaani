@@ -132,7 +132,9 @@ dialog .row { display: flex; gap: 8px; margin-top: 16px; }
 
 @media (max-width: 900px) {
   html { scroll-padding-top: 230px; }
-  .top { grid-template-columns: 1fr; gap: 8px; padding: 10px 16px; }
+  .top { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 16px; }
+  .top > * { min-width: 0; }
+  .tools select { width: 0; }
   .brand p { display: none; }
   .tools select { flex: 1; max-width: none; min-width: 0; }
   .layout.split { grid-template-columns: minmax(0, 1fr); }
@@ -140,7 +142,11 @@ dialog .row { display: flex; gap: 8px; margin-top: 16px; }
   .v { grid-template-columns: 34px minmax(0, 1fr); }
   .v .txt { grid-template-columns: 1fr; font-size: 21px; }
   .v .pg { grid-row: auto; grid-column: 2 / 3; justify-self: start; }
-  .vbar { flex-wrap: wrap; }
+  .vbar { flex-wrap: wrap; gap: 6px; padding: 8px; }
+  .vbar button { padding: 0 9px; }
+  .vbar input { width: 62px; padding: 0 4px; }
+  .vbar .grow { display: none; }
+  #vclose { margin-inline-start: auto; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .v { transition: background-color .6s; }
